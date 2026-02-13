@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+result
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Nix / devenv
+.devenv/
+.direnv/
+
+# Serena
+.serena/cache/
+.serena/memories/
+
+# Python (uv)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TanStack Start / Vinxi
+.vinxi/
+.output/
+
+# Misc
+*.log
+*.tsbuildinfo
+
+*.fit
+*.mp4
