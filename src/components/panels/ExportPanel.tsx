@@ -1,107 +1,111 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useProjectStore } from '~/stores/project-store'
-import { renderOverlayToBlob, type RenderProgress } from '~/lib/render-overlay'
 import { Button } from '~/components/ui/button'
-import { Progress } from '~/components/ui/progress'
-import { Separator } from '~/components/ui/separator'
 
 type ExportState =
   | { status: 'idle' }
-  | { status: 'rendering'; progress: RenderProgress }
+  | { status: 'exporting' }
   | { status: 'done'; url: string }
   | { status: 'error'; message: string }
 
 export function ExportPanel() {
   const videoMeta = useProjectStore((s) => s.videoMeta)
+  const videoFile = useProjectStore((s) => s.videoFile)
   const fitTimeline = useProjectStore((s) => s.fitTimeline)
   const sync = useProjectStore((s) => s.sync)
   const gauges = useProjectStore((s) => s.gauges)
 
   const [state, setState] = useState<ExportState>({ status: 'idle' })
+  const blobUrlRef = useRef<string | null>(null)
 
-  const canExport = videoMeta != null && fitTimeline != null && gauges.length > 0
+  const canExport =
+    videoMeta != null &&
+    videoFile != null &&
+    fitTimeline != null &&
+    gauges.length > 0
 
   const handleExport = useCallback(async () => {
-    if (!videoMeta || !fitTimeline) return
+    if (!videoMeta || !videoFile || !fitTimeline) return
 
-    setState({ status: 'rendering', progress: { currentFrame: 0, totalFrames: 1, phase: 'rendering' } })
+    // Revoke previous blob URL if any
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+      blobUrlRef.current = null
+    }
+
+    setState({ status: 'exporting' })
 
     try {
-      const blob = await renderOverlayToBlob(
-        fitTimeline,
-        sync,
-        gauges,
-        videoMeta.width,
-        videoMeta.height,
-        videoMeta.fps,
-        videoMeta.duration,
-        (progress) => {
-          setState({ status: 'rendering', progress })
-        },
-        videoMeta.filePath,
-      )
+      const formData = new FormData()
+      formData.append('video', videoFile)
+      formData.append('fitTimeline', JSON.stringify(fitTimeline))
+      formData.append('sync', JSON.stringify(sync))
+      formData.append('gauges', JSON.stringify(gauges))
+      formData.append('videoMeta', JSON.stringify({
+        width: videoMeta.width,
+        height: videoMeta.height,
+        fps: videoMeta.fps,
+      }))
 
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText)
+        throw new Error(`Export failed: ${text}`)
+      }
+
+      const blob = await res.blob()
       const url = URL.createObjectURL(blob)
+      blobUrlRef.current = url
       setState({ status: 'done', url })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Export failed'
       setState({ status: 'error', message: msg })
     }
-  }, [videoMeta, fitTimeline, sync, gauges])
+  }, [videoMeta, videoFile, fitTimeline, sync, gauges])
 
   const handleDownload = useCallback(() => {
     if (state.status !== 'done') return
     const a = document.createElement('a')
     a.href = state.url
-    a.download = `stridash-${Date.now()}.webm`
+    a.download = `stridash-${Date.now()}.mp4`
     a.click()
   }, [state])
 
-  const progressPercent = state.status === 'rendering'
-    ? (state.progress.currentFrame / state.progress.totalFrames) * 100
-    : 0
-
   return (
     <div className="flex flex-col gap-3 border-t border-border p-4">
-      <h3 className="text-sm font-semibold text-foreground/80">
-        Export
-      </h3>
+      <h3 className="text-sm font-semibold text-foreground/80">Export</h3>
 
-      {/* Export button */}
       <Button
         onClick={handleExport}
-        disabled={!canExport || state.status === 'rendering'}
+        disabled={!canExport || state.status === 'exporting'}
       >
-        {state.status === 'rendering' ? 'Rendering...' : 'Export Video'}
+        {state.status === 'exporting'
+          ? 'Exporting...'
+          : state.status === 'error'
+            ? 'Retry Export'
+            : 'Export MP4'}
       </Button>
 
-      {/* Progress */}
-      {state.status === 'rendering' && (
-        <div>
-          <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-            <span>{state.progress.phase}</span>
-            <span>
-              {state.progress.currentFrame}/{state.progress.totalFrames}
-            </span>
-          </div>
-          <Progress value={progressPercent} />
-          <p className="mt-1 text-xs text-muted-foreground">
-            Keep this tab active during export
-          </p>
+      {state.status === 'exporting' && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          <span>Rendering gauges & compositing video...</span>
         </div>
       )}
 
-      {/* Download */}
       {state.status === 'done' && (
-        <Button
-          variant="secondary"
-          onClick={handleDownload}
-        >
-          Download Video
-        </Button>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-secondary">Export complete</p>
+          <Button variant="secondary" onClick={handleDownload}>
+            Download MP4
+          </Button>
+        </div>
       )}
 
-      {/* Error */}
       {state.status === 'error' && (
         <p className="text-xs text-destructive">{state.message}</p>
       )}

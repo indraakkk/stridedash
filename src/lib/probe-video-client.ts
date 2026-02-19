@@ -1,4 +1,5 @@
 import type { VideoMeta } from './types'
+import { parseMp4CreationTime } from './parse-mp4-creation-time'
 
 /**
  * Extract video metadata client-side using the browser's video element.
@@ -10,7 +11,7 @@ export function probeVideoClient(file: File): Promise<VideoMeta> {
     const video = document.createElement('video')
     video.preload = 'metadata'
 
-    video.onloadedmetadata = () => {
+    video.onloadedmetadata = async () => {
       const meta: VideoMeta = {
         duration: video.duration,
         fps: 30, // Browser can't reliably detect FPS; default to 30
@@ -20,6 +21,16 @@ export function probeVideoClient(file: File): Promise<VideoMeta> {
         fileSize: file.size,
         filePath: url,
       }
+
+      try {
+        const creationDate = await parseMp4CreationTime(file)
+        if (creationDate) {
+          meta.creationTime = creationDate.getTime() / 1000
+        }
+      } catch {
+        // Metadata extraction is optional — silently ignore
+      }
+
       resolve(meta)
     }
 

@@ -40,6 +40,16 @@ const initialState: ProjectState = {
   gauges: [],
 }
 
+function computeAutoOffset(
+  creationTime: number,
+  fitStart: number,
+  fitEnd: number,
+): number | null {
+  const offset = creationTime - fitStart
+  const fitDuration = fitEnd - fitStart
+  return offset >= 0 && offset <= fitDuration ? offset : null
+}
+
 let gaugeCounter = 0
 
 function makeGaugeId(): string {
@@ -51,14 +61,27 @@ export const useProjectStore = create<ProjectState & ProjectActions>(
     ...initialState,
 
     setVideoMeta: (meta) =>
-      set((s) => ({
-        videoMeta: meta,
-        sync: { ...s.sync, videoDuration: meta.duration },
-      })),
+      set((s) => {
+        const sync = { ...s.sync, videoDuration: meta.duration }
+        if (meta.creationTime != null && s.fitTimeline) {
+          const auto = computeAutoOffset(meta.creationTime, s.fitTimeline.startTime, s.fitTimeline.endTime)
+          if (auto != null) sync.fitStartOffset = auto
+        }
+        return { videoMeta: meta, sync }
+      }),
 
     setVideoFile: (file) => set({ videoFile: file }),
 
-    setFitTimeline: (timeline) => set({ fitTimeline: timeline }),
+    setFitTimeline: (timeline) =>
+      set((s) => {
+        if (s.videoMeta?.creationTime != null) {
+          const auto = computeAutoOffset(s.videoMeta.creationTime, timeline.startTime, timeline.endTime)
+          if (auto != null) {
+            return { fitTimeline: timeline, sync: { ...s.sync, fitStartOffset: auto } }
+          }
+        }
+        return { fitTimeline: timeline }
+      }),
 
     setFitFile: (file) => set({ fitFile: file }),
 

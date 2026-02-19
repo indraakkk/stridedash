@@ -16,6 +16,29 @@ export interface GaugeDrawConfig {
   metric?: MetricKey
   /** Unique gauge ID for sparkline history isolation */
   gaugeId?: string
+  /** Per-request sparkline state (server isolation). Falls back to module global if omitted. */
+  sparklineState?: Map<string, number[]>
+}
+
+/** roundRect polyfill for environments where ctx.roundRect is unavailable (e.g. @napi-rs/canvas) */
+function roundRectPolyfill(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  r: number | number[],
+): void {
+  const radii = typeof r === 'number' ? [r, r, r, r] : r
+  const [tl, tr, br, bl] = radii
+  ctx.beginPath()
+  ctx.moveTo(x + tl, y)
+  ctx.lineTo(x + w - tr, y)
+  ctx.arcTo(x + w, y, x + w, y + tr, tr)
+  ctx.lineTo(x + w, y + h - br)
+  ctx.arcTo(x + w, y + h, x + w - br, y + h, br)
+  ctx.lineTo(x + bl, y + h)
+  ctx.arcTo(x, y + h, x, y + h - bl, bl)
+  ctx.lineTo(x, y + tl)
+  ctx.arcTo(x, y, x + tl, y, tl)
+  ctx.closePath()
 }
 
 const TAU = Math.PI * 2
@@ -133,14 +156,14 @@ function drawArcGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig): v
 
   // Center text
   const fontSize = Math.max(28, radius * 0.7)
-  ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(hasData ? formatValue(value, metric, label) : '--', cx, cy - fontSize * 0.1)
 
   const smallFontSize = Math.max(14, radius * 0.28)
-  ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `${smallFontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
   ctx.fillText(`${label} · ${unit}`, cx, cy + fontSize * 0.6)
 
@@ -191,14 +214,14 @@ function drawRadialGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig)
 
   // Center text
   const fontSize = Math.max(28, radius * 0.55)
-  ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(hasData ? formatValue(value, metric, label) : '--', cx, cy - fontSize * 0.15)
 
   const smallFontSize = Math.max(14, radius * 0.22)
-  ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `${smallFontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
   ctx.fillText(`${label} · ${unit}`, cx, cy + fontSize * 0.5)
 
@@ -224,14 +247,12 @@ function drawBarGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig): v
   const valueRatio = hasData ? (clampedValue - minValue) / (maxValue - minValue) : 0
 
   // Background
-  ctx.beginPath()
-  ctx.roundRect(0, 0, width, height, 8)
+  roundRectPolyfill(ctx, 0, 0, width, height, 8)
   ctx.fillStyle = BG_COLOR
   ctx.fill()
 
   // Bar track
-  ctx.beginPath()
-  ctx.roundRect(barX, barTop, barWidth, barHeight, barWidth / 2)
+  roundRectPolyfill(ctx, barX, barTop, barWidth, barHeight, barWidth / 2)
   ctx.fillStyle = TRACK_COLOR
   ctx.fill()
 
@@ -252,15 +273,14 @@ function drawBarGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig): v
     const fillHeight = valueRatio * barHeight
     const activeColor = getActiveColor(clampedValue, colorZones, maxValue)
 
-    ctx.beginPath()
-    ctx.roundRect(barX, barBottom - fillHeight, barWidth, fillHeight, barWidth / 2)
+    roundRectPolyfill(ctx, barX, barBottom - fillHeight, barWidth, fillHeight, barWidth / 2)
     ctx.fillStyle = activeColor
     ctx.fill()
   }
 
   // Value text (top)
   const fontSize = Math.max(28, width * 0.25)
-  ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
@@ -268,7 +288,7 @@ function drawBarGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig): v
 
   // Label (bottom)
   const smallFontSize = Math.max(12, width * 0.12)
-  ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `${smallFontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
   ctx.textBaseline = 'bottom'
   ctx.fillText(`${label}`, width / 2, height - 10)
@@ -290,24 +310,24 @@ function drawMinimalGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig
   ctx.globalAlpha = hasData ? 1 : 0.45
 
   // Background
-  ctx.beginPath()
-  ctx.roundRect(0, 0, width, height, 6)
+  roundRectPolyfill(ctx, 0, 0, width, height, 6)
   ctx.fillStyle = BG_COLOR
   ctx.fill()
 
   // Track sparkline history (use gaugeId for isolation, fall back to label)
+  const historyMap = config.sparklineState ?? sparklineHistory
   const key = gaugeId ? `${gaugeId}-sparkline` : `${label}-sparkline`
   if (hasData) {
-    if (!sparklineHistory.has(key)) sparklineHistory.set(key, [])
-    const history = sparklineHistory.get(key)!
+    if (!historyMap.has(key)) historyMap.set(key, [])
+    const history = historyMap.get(key)!
     history.push(value)
     if (history.length > SPARKLINE_LENGTH) history.shift()
   }
-  const history = sparklineHistory.get(key)
+  const history = historyMap.get(key)
 
   // Value text
   const fontSize = Math.max(28, height * 0.45)
-  ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
@@ -315,7 +335,7 @@ function drawMinimalGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig
 
   // Label + unit
   const smallFontSize = Math.max(12, height * 0.18)
-  ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`
+  ctx.font = `${smallFontSize}px Inter, system-ui, -apple-system, sans-serif`
   ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
   ctx.fillText(`${label} ${unit}`, 8, height * 0.72)
 
@@ -351,6 +371,3 @@ function drawMinimalGauge(ctx: CanvasRenderingContext2D, config: GaugeDrawConfig
   ctx.globalAlpha = 1
 }
 
-// Legacy export for backward compatibility
-export { drawArcGauge }
-export type { GaugeDrawConfig as ArcGaugeDrawConfig }

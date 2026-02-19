@@ -33,6 +33,7 @@ export interface VideoMeta {
   codec: string
   fileSize: number // bytes
   filePath: string
+  creationTime?: number // Unix epoch seconds
 }
 
 // --- Timeline Sync ---

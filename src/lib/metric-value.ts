@@ -1,6 +1,6 @@
 import type { MetricKey } from './types'
 
-/** Shared metric extraction — used by both preview (RunOverlay) and export (render-overlay). */
+/** Shared metric extraction — used by preview (RunOverlay) and server export. */
 export function getMetricValue(
   record: Record<string, any>,
   metric: MetricKey,
