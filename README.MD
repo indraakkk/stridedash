@@ -28,10 +28,26 @@ The app resolves the challenge of manually aligning video clips with sports watc
 
 4. **Result:** View or export your video with a professional data overlay that mirrors your condition at the exact moment the footage was taken.
 
+### **Notable Work: Agentic AI-Assisted Development**
+
+The development of Stridash utilized advanced **Agentic AI** workflows to solve complex engineering challenges:
+
+- **Compound Method:** Built using a "Plan → Work → Review → Compound" cycle, ensuring architectural integrity through iterative AI-driven refinement.
+
+- **Intelligent Integration:** Leveraged AI agents to ingest external repositories as submodules, allowing the system to learn and implement only the essential logic for file parsing and data synchronization.
+
+### **Technical Implementation**
+
+- **Video Processing Architecture:** Implemented a hybrid approach that respects web limitations by offloading intensive video processing to the server.
+
+- **Dynamic Rendering:** Utilized **Canvas API** to draw high-performance data overlays and integrated **Remotion** for programmatic video frame generation.
+
+- **Timeline Editing:** Integrated a custom video timeline editor to allow for fine-tuned manual adjustments of activity sync points.
+
+- **Logic:** Precise temporal data matching and specialized `.fit` file parsing for telemetry extraction.
+
 ### **Tech Stack**
 
-This project leverages my experience in building maintainable, high-quality web applications:
-
-- **Frontend:** React (TypeScript).
-
-- **Logic:** Precise temporal data matching and file parsing.
+- **Frontend:** React, TypeScript.
+- **Video/Graphics:** Remotion, Canvas API.
+- **Infrastructure:** Server-side video processing engines.
